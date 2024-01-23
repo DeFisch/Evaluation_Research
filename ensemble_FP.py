@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
+from collections import Counter
 
 # modify accoding to your results
 DATASET_GT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_dbinfos_10sweeps_withvelo.pkl"
@@ -85,13 +86,21 @@ def cluster_scene_FP(preds, scene=0, eps=2, print_result=True, visualize=True):
         print(f"cluster results with a distance limit of {eps}")
         for i in range(-1, n_clusters_):
             num_points_in_cluster = sum([1 for e in labels if e == i])
-            print(f"cluster {i}: {num_points_in_cluster} points")
+            corresponding_model = [pred_model[j] for j in range(len(labels)) if labels[j]==i]
+            num_unique_models = len(Counter(corresponding_model).keys())
+            print(f"cluster {i}: {num_points_in_cluster} FPs, predicted by {num_unique_models} models.")
+    if visualize:
+        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+        for i in range(-1, n_clusters_):
+            points_in_cluster = [flattened_preds[j] for j in range(len(labels)) if labels[j]==i]
+            plt.plot(np.array(points_in_cluster)[:,0],np.array(points_in_cluster)[:,1], "o", alpha=1)
+        plt.show()
 
     
 
 
 
 model_predictions = load_predictions_from_files(path_list, filter_class="car", filter_IoU=0)
-cluster_scene_FP(model_predictions)
-# # for visualizations purposes
-# plot_FP_gt_scene(model_predictions, scene=10, draw_gt=True) 
+cluster_scene_FP(model_predictions, scene=0)
+# for visualizations purposes
+plot_FP_gt_scene(model_predictions, scene=0, draw_gt=True) 
