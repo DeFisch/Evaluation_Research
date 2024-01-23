@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
 
 # modify accoding to your results
 DATASET_GT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_dbinfos_10sweeps_withvelo.pkl"
@@ -68,13 +69,29 @@ def plot_FP_gt_scene(preds, scene=0, draw_gt=True):
         if draw_gt else plot_pred_centerpoints_per_scene(scene_preds)
 
 
-def cluster_scene_FP(preds, scene=0):
-    scene_preds = [e[scene] for e in preds]
+def cluster_scene_FP(preds, scene=0, eps=2, print_result=True, visualize=True):
+    scene_preds = [e[scene][1] for e in preds] # 7 x npreds
+    pred_model = []
+    flattened_preds = []
+    for i in range(len(scene_preds)):
+        for pred in scene_preds[i]:
+            flattened_preds.append([pred[0],pred[1]]) # get bev coord of bbox
+            pred_model.append(i)
+    flattened_preds = np.array(flattened_preds)
+    db = DBSCAN(eps, min_samples=5).fit(flattened_preds)
+    labels = db.labels_
+    if print_result:
+        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+        print(f"cluster results with a distance limit of {eps}")
+        for i in range(-1, n_clusters_):
+            num_points_in_cluster = sum([1 for e in labels if e == i])
+            print(f"cluster {i}: {num_points_in_cluster} points")
+
     
 
 
 
 model_predictions = load_predictions_from_files(path_list, filter_class="car", filter_IoU=0)
-
+cluster_scene_FP(model_predictions)
 # # for visualizations purposes
 # plot_FP_gt_scene(model_predictions, scene=10, draw_gt=True) 
