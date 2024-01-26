@@ -1,3 +1,6 @@
+
+import cv2
+import math
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
@@ -89,18 +92,80 @@ def cluster_scene_FP(preds, scene=0, eps=2, print_result=True, visualize=True):
             corresponding_model = [pred_model[j] for j in range(len(labels)) if labels[j]==i]
             num_unique_models = len(Counter(corresponding_model).keys())
             print(f"cluster {i}: {num_points_in_cluster} FPs, predicted by {num_unique_models} models.")
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+    for i in range(-1, n_clusters_):
+        points_in_cluster = [flattened_preds[j] for j in range(len(labels)) if labels[j]==i]
+        plt.plot(np.array(points_in_cluster)[:,0],np.array(points_in_cluster)[:,1], "o", alpha=1)
     if visualize:
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        for i in range(-1, n_clusters_):
-            points_in_cluster = [flattened_preds[j] for j in range(len(labels)) if labels[j]==i]
-            plt.plot(np.array(points_in_cluster)[:,0],np.array(points_in_cluster)[:,1], "o", alpha=1)
         plt.show()
+    else:
+        plt.savefig(f"results/cluster_scene{scene}.png")
+
+def FP_box_bev(FP_preds, img_dim:int, scene=0, display=False):
+    scene_preds = [e[scene][1] for e in FP_preds] # 7 x npreds
+    disp = np.zeros((img_dim,img_dim,3))
+    scale = int(img_dim/150) # nuscenes pc range 150m max
+    
+    for model_preds in scene_preds:
+        for pred in model_preds:
+            layer = np.zeros((img_dim,img_dim,3))
+            heading_angle = pred[6]*180/math.pi + 180 # quaternions radians to angle in degrees
+            location = (pred[0]*scale+int(img_dim/2), pred[1]*scale+int(img_dim/2))
+            rect = (location,(pred[3]*scale, pred[4]*scale), heading_angle)
+            box = cv2.boxPoints(rect)
+            box = np.int0(box)
+            cv2.drawContours(layer,[box],0,(0,0,1),thickness=cv2.FILLED)
+            disp += layer
+    plt.pcolormesh(disp[:,:,2])
+    if display:
+        plt.show()
+    else:
+        plt.savefig(f"results/FP_scene_{scene}.png")
+
+    return disp
+
+def gt_box_bev(gt, img_dim:int, scene=0, display=False):
+    gt = [e[0] for e in gt]
+    disp = np.zeros((img_dim,img_dim,3))
+    scale = int(img_dim/150) # nuscenes pc range 150m max
+    
+    for bbox in gt:
+        if bbox[9] != 1.0: # filter out all other classes
+            continue
+        layer = np.zeros((img_dim,img_dim,3))
+        heading_angle = bbox[6]*180/math.pi + 180 # quaternions radians to angle in degrees
+        location = (bbox[0]*scale+int(img_dim/2), bbox[1]*scale+int(img_dim/2))
+        rect = (location,(bbox[3]*scale, bbox[4]*scale), heading_angle)
+        box = cv2.boxPoints(rect)
+        box = np.int0(box)
+        cv2.drawContours(layer,[box],0,(0,0,1),thickness=cv2.FILLED)
+        disp += layer
+    plt.pcolormesh(disp[:,:,2])
+    if display:
+        plt.show()
+    else:
+        plt.savefig(f"results/gt_scene_{scene}.png")
+    
+    return disp
+
 
     
 
+FPs = load_predictions_from_files(path_list, filter_class="car", filter_IoU=1)
+scene = 10
 
+########   Plot bev boxes on scene #######
+with open(path_list[0], 'rb') as f:
+    pred = pickle.load(f)
+gt_boxes = pred[scene]['gt_box_coverage']
+img_dim = 1200
+FP_map = FP_box_bev(FPs,img_dim,scene=scene)
+gt_map = gt_box_bev(gt_boxes,img_dim,scene=scene)
+combined = FP_map-gt_map
+plt.pcolormesh(combined[:,:,2])
+plt.savefig(f"results/combined_scene{scene}.png")
+plt.clf()
+########   end   ########
 
-model_predictions = load_predictions_from_files(path_list, filter_class="car", filter_IoU=0)
-cluster_scene_FP(model_predictions, scene=0)
-# for visualizations purposes
-plot_FP_gt_scene(model_predictions, scene=0, draw_gt=True) 
+cluster_scene_FP(FPs, scene=scene, visualize=False)
+
