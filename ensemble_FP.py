@@ -168,4 +168,3 @@ plt.clf()
 ########   end   ########
 
 cluster_scene_FP(FPs, scene=scene, visualize=False)
-
