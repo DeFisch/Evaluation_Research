@@ -18,7 +18,7 @@ SECOND_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_r
 PP_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_pp_multihead/default/eval/epoch_5823/val/default/result.pkl"
 PP_CENTERPT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_dyn_pp_centerpoint/default/eval/epoch_6070/val/default/result.pkl"
 
-path_list=[PP_MULTIHEAD_PATH,SECOND_MULTIHEAD_PATH,PP_CENTERPT_PATH,CENTERPT_VOX01_PATH,CENTERPT_VOX0075_PATH,VOXELNEXT_PATH,TRANSFUSION_PATH]
+PATH_LIST=[PP_MULTIHEAD_PATH,SECOND_MULTIHEAD_PATH,PP_CENTERPT_PATH,CENTERPT_VOX01_PATH,CENTERPT_VOX0075_PATH,VOXELNEXT_PATH,TRANSFUSION_PATH]
 
 # load result pickle file one by one
 def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
@@ -29,10 +29,13 @@ def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
             pred = pickle.load(f)
        
         model_pred = []
+        scene_tokens = []
         for scene in pred:
+            scene_tokens.append(scene['metadata']['token'])
             IoU = scene['IoU_gt_record']
             classes = list(scene['name'])
             bboxes = list(scene['boxes_lidar'])
+            scores = list(scene['score'])
             pop_idx_list = []
             for i, pred_class in enumerate(classes):
                 if (filter_class is not None and pred_class != filter_class) or IoU[i] > filter_IoU:
@@ -41,10 +44,11 @@ def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
             for idx in pop_idx_list:
                 IoU.pop(idx)
                 bboxes.pop(idx)
-            model_pred.append((IoU,bboxes))
+                scores.pop(idx)
+            model_pred.append((IoU,bboxes,scores))
         model_predictions.append(model_pred)
 
-    return model_predictions
+    return model_predictions, scene_tokens
 
 def plot_pred_centerpoints_per_scene(scene_preds, gt=None):
     # plot FP data per model using different color
@@ -66,23 +70,23 @@ def plot_pred_centerpoints_per_scene(scene_preds, gt=None):
 def plot_FP_gt_scene(preds, scene=0, draw_gt=True):
     scene_preds = [e[scene] for e in preds]
     if draw_gt:
-        with open(path_list[0], 'rb') as f:
+        with open(PATH_LIST[0], 'rb') as f:
             pred = pickle.load(f)
         gt_boxes = pred[scene]['gt_box_coverage']
     plot_pred_centerpoints_per_scene(scene_preds,gt_boxes) \
         if draw_gt else plot_pred_centerpoints_per_scene(scene_preds)
 
 
-def cluster_scene_FP(preds, scene=0, eps=2, print_result=True, visualize=True):
+def cluster_scene_FP(preds, scene=0, eps=2, print_result=False, visualize=False):
     scene_preds = [e[scene][1] for e in preds] # 7 x npreds
     pred_model = []
     flattened_preds = []
     for i in range(len(scene_preds)):
         for pred in scene_preds[i]:
-            flattened_preds.append([pred[0],pred[1]]) # get bev coord of bbox
+            flattened_preds.append(pred) # get bev coord of bbox
             pred_model.append(i)
     flattened_preds = np.array(flattened_preds)
-    db = DBSCAN(eps, min_samples=5).fit(flattened_preds)
+    db = DBSCAN(eps, min_samples=5).fit(flattened_preds[:,0:2])
     labels = db.labels_
     if print_result:
         n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
@@ -93,13 +97,16 @@ def cluster_scene_FP(preds, scene=0, eps=2, print_result=True, visualize=True):
             num_unique_models = len(Counter(corresponding_model).keys())
             print(f"cluster {i}: {num_points_in_cluster} FPs, predicted by {num_unique_models} models.")
     n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-    for i in range(-1, n_clusters_):
-        points_in_cluster = [flattened_preds[j] for j in range(len(labels)) if labels[j]==i]
-        plt.plot(np.array(points_in_cluster)[:,0],np.array(points_in_cluster)[:,1], "o", alpha=1)
+    points_in_cluster = []
+    for i in range(n_clusters_):
+        points_in_cluster.append([flattened_preds[j] for j in range(len(labels)) if labels[j]==i])
     if visualize:
+        for cluster in points_in_cluster:
+            plt.plot(np.array(cluster)[:,0],np.array(cluster)[:,1], "o", alpha=1)
         plt.show()
     else:
         plt.savefig(f"results/cluster_scene{scene}.png")
+    return points_in_cluster
 
 def FP_box_bev(FP_preds, img_dim:int, scene=0, display=False):
     scene_preds = [e[scene][1] for e in FP_preds] # 7 x npreds
@@ -151,20 +158,19 @@ def gt_box_bev(gt, img_dim:int, scene=0, display=False):
 
     
 
-FPs = load_predictions_from_files(path_list, filter_class="car", filter_IoU=1)
+FPs,_ = load_predictions_from_files(PATH_LIST, filter_class="car", filter_IoU=1)
 scene = 10
 
-########   Plot bev boxes on scene #######
-with open(path_list[0], 'rb') as f:
-    pred = pickle.load(f)
-gt_boxes = pred[scene]['gt_box_coverage']
-img_dim = 1200
-FP_map = FP_box_bev(FPs,img_dim,scene=scene)
-gt_map = gt_box_bev(gt_boxes,img_dim,scene=scene)
-combined = FP_map-gt_map
-plt.pcolormesh(combined[:,:,2])
-plt.savefig(f"results/combined_scene{scene}.png")
-plt.clf()
-########   end   ########
+def plot_combined_FP_gt(scene=scene):
+    with open(PATH_LIST[0], 'rb') as f:
+        pred = pickle.load(f)
+    gt_boxes = pred[scene]['gt_box_coverage']
+    img_dim = 1200
+    FP_map = FP_box_bev(FPs,img_dim,scene=scene)
+    gt_map = gt_box_bev(gt_boxes,img_dim,scene=scene)
+    combined = FP_map-gt_map
+    plt.pcolormesh(combined[:,:,2])
+    plt.savefig(f"results/combined_scene{scene}.png")
+    plt.clf()
 
 cluster_scene_FP(FPs, scene=scene, visualize=False)
