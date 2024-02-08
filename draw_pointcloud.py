@@ -2,8 +2,9 @@ import math
 import cv2
 import open3d as o3d
 import numpy as np
+import matplotlib.pyplot as plt
 from .utils import *
-from .ensemble_FP import load_predictions_from_files, cluster_scene_FP
+from .ensemble_FP import load_predictions_from_files, cluster_scene_FP, load_TP_predictions_from_files
 from .ensemble_FP import PATH_LIST
 import pickle
  
@@ -32,7 +33,7 @@ def draw_pointcloud(pcd):
     pcd.points = o3d.utility.Vector3dVector(xyz)
     o3d.visualization.draw_geometries([pcd])
 
-def draw_pointcloud_with_active_FP_areas(pcd, FP_clusters, plot_gt=False, gt=None, plot_FP=False, FP=None, scores=None):
+def draw_pointcloud_with_active_FP_areas(pcd, FP_clusters, plot_gt=False, gt=None, plot_FP=False, FP=None):
 
     xyz = (pcd.T)[:, :3]
     xyz = o3d.utility.Vector3dVector(xyz)
@@ -41,19 +42,21 @@ def draw_pointcloud_with_active_FP_areas(pcd, FP_clusters, plot_gt=False, gt=Non
     obj = []
     cluster_pts_idx = []
     for cluster in FP_clusters:
-        max_x,min_x,max_y,min_y,max_z = -1000,1000,-1000,1000,-1000
+        max_x,min_x,max_y,min_y,max_z,min_z = -1000,1000,-1000,1000,-1000,1000
         for instance in cluster:
             box_corners = get_box_corners(instance)
             max_x = max(max_x, np.max(box_corners[:,0]))
             max_y = max(max_y, np.max(box_corners[:,1]))
             min_x = min(min_x, np.min(box_corners[:,0]))
             min_y = min(min_y, np.min(box_corners[:,1]))
-            max_z = max(max_z, instance[5])
+            min_z = min(min_z, instance[2]-1/2*instance[5])
+            max_z = max(max_z, instance[2]+1/2*instance[5])
         max_bound = [max_x, max_y, max_z]
-        min_bound = [min_x, min_y, -2]
+        min_bound = [min_x, min_y, min_z]
         cluster_box = o3d.geometry.AxisAlignedBoundingBox(min_bound, max_bound)
         cluster_box.color = [1,0,0]
-        cluster_pts_idx.append(cluster_box.get_point_indices_within_bounding_box(xyz))
+        pts_id_in_cluster = cluster_box.get_point_indices_within_bounding_box(xyz)
+        cluster_pts_idx.append(pts_id_in_cluster)
         obj.append(cluster_box)
 
     # plot gt data and opacity based on recall rate
@@ -78,8 +81,7 @@ def draw_pointcloud_with_active_FP_areas(pcd, FP_clusters, plot_gt=False, gt=Non
                                             [math.sin(heading_angle), math.cos(heading_angle), 0],
                                             [0, 0, 1]])
             obj.append(o3d.geometry.OrientedBoundingBox(location, rotational_matrix, size))
-            r, g, b = hsv_to_rgb(0.5*(1-scores[i]), 1, 1)
-            print(scores[i])
+            r, g, b = hsv_to_rgb(0.5, 1, 1)
             obj[-1].color = [r/255.0,g/255.0,b/255.0]
 
     pcd = o3d.geometry.PointCloud()
@@ -100,14 +102,15 @@ def draw_active_FP_areas_points(pcd, FP_clusters):
     obj = []
     cluster_pts_idx = []
     for cluster in FP_clusters:
-        max_x,min_x,max_y,min_y,max_z = -1000,1000,-1000,1000,-1000
+        max_x,min_x,max_y,min_y,max_z,min_z = -1000,1000,-1000,1000,-1000,1000
         for instance in cluster:
             box_corners = get_box_corners(instance)
             max_x = max(max_x, np.max(box_corners[:,0]))
             max_y = max(max_y, np.max(box_corners[:,1]))
             min_x = min(min_x, np.min(box_corners[:,0]))
             min_y = min(min_y, np.min(box_corners[:,1]))
-            max_z = max(max_z, instance[5])
+            min_z = min(min_z, instance[2]-1/2*instance[5])
+            max_z = max(max_z, instance[2]+1/2*instance[5])
         max_bound = [max_x, max_y, max_z]
         min_bound = [min_x, min_y, -2]
         cluster_box = o3d.geometry.AxisAlignedBoundingBox(min_bound, max_bound)
@@ -129,12 +132,71 @@ def get_box_corners(bbox) -> np.ndarray:
     box = np.int0(box)    
     return box
 
+def visualize_cluster_TP_confidences(FP_clusters, TPs, show_results=True, scene = 0):
+    """
+    FP_clusters: n_clusters x n_instances x 7
+    TPs: n_models x ([model_ids], [bboxes], [confidences])
+    """
+    
+    categories = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION"]
+    model_confidences = {}
+    for i in range(len(FP_clusters)):
+        model_confidences[f"Cluster {i}"] = [0 for _ in categories]
+    model_confidences[f"TP"] = [0 for _ in categories]
+    
+    for i,cluster in enumerate(FP_clusters):
+        confidence_sum = []
+        for _ in range(7):
+            confidence_sum.append([])
+        for instance in cluster:
+            confidence_sum[int(instance[-1])].append(instance[-2])
+        confidence_sum = [np.mean(np.array(e)) if len(e) > 0 else 0 for e in confidence_sum]
+        model_confidences[f"Cluster {i}"] = confidence_sum
+    
+    for i,TP in enumerate(TPs):
+        model_confidences[f"TP"][i] = np.mean(TP[2])
+    
+    x = np.arange(len(categories))
+    bar_width = 0.04
+    multiplier = 0
+    plt.close('all')
+    fig, ax = plt.subplots(layout='constrained')
+    fig.set_size_inches(10, 6)
+    for keys, values in model_confidences.items():
+        offset = bar_width*multiplier
+        if keys == "TP":
+            rects = ax.bar(x + offset, values, bar_width, label=keys, color='r')
+        else:
+            rects = ax.bar(x + offset, values, bar_width, label=keys, alpha=0.5)
+        multiplier += 1
+    
+    ax.set_ylabel('Confidence')
+    ax.set_title('Cluster confidences by models')
+    ax.set_xticks(x + bar_width, categories, fontsize=5)
+    ax.set_ylim(0, 1)
+    ax.legend(loc='upper left', ncol=2, fontsize=5)
+
+    if show_results:
+        plt.show()
+    else:
+        plt.savefig(f"results/confidences_FP_TP_clusters/scene_{scene}.png")
+
 FPs, scene_tokens = load_predictions_from_files(PATH_LIST, filter_class="car", filter_IoU=0)
-scene = 0
-clusters = cluster_scene_FP(FPs, scene, print_result=True, visualize=False)
-pcd = find_corresponding_pcd(scene_tokens[scene],DATA_INFO_PATH,PCD_PATH)
-with open(PATH_LIST[0], 'rb') as f:
-    pred = pickle.load(f)
-gt_boxes = pred[scene]['gt_box_coverage']
-draw_pointcloud_with_active_FP_areas(pcd, clusters, plot_gt=True, gt=gt_boxes, plot_FP=True, FP=[x for e in FPs for x in e[scene][1]], scores=[x for e in FPs for x in e[scene][2]])
-draw_active_FP_areas_points(pcd, clusters)
+
+scenes = np.arange(0,81)
+for scene in scenes:
+    clusters = cluster_scene_FP(FPs, scene, print_result=False, visualize=False)
+    
+    ######################## Draw pointcloud with active FP areas ########################
+
+    # pcd = find_corresponding_pcd(scene_tokens[scene],DATA_INFO_PATH,PCD_PATH)
+    # with open(PATH_LIST[0], 'rb') as f:
+    #     pred = pickle.load(f)
+    # gt_boxes = pred[scene]['gt_box_coverage']
+    # draw_pointcloud_with_active_FP_areas(pcd, clusters, plot_gt=True, gt=gt_boxes, plot_FP=True, FP=[x for e in FPs for x in e[scene][1]])
+    # draw_active_FP_areas_points(pcd, clusters)
+
+    ######################## Visualize cluster TP confidences differences ########################
+    
+    TPs = load_TP_predictions_from_files(PATH_LIST, filter_class="car", filter_IoU=0)
+    visualize_cluster_TP_confidences(clusters, [x[scene] for x in TPs[0]], show_results=False,scene=scene)

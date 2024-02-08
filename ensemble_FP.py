@@ -23,7 +23,7 @@ PATH_LIST=[PP_MULTIHEAD_PATH,SECOND_MULTIHEAD_PATH,PP_CENTERPT_PATH,CENTERPT_VOX
 # load result pickle file one by one
 def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
     model_predictions = []
-    for path in paths:
+    for i,path in enumerate(paths):
 
         with open(path, 'rb') as f:
             pred = pickle.load(f)
@@ -37,15 +37,42 @@ def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
             bboxes = list(scene['boxes_lidar'])
             scores = list(scene['score'])
             pop_idx_list = []
-            for i, pred_class in enumerate(classes):
-                if (filter_class is not None and pred_class != filter_class) or IoU[i] > filter_IoU:
-                    pop_idx_list.append(i)
+            for j, pred_class in enumerate(classes):
+                if (filter_class is not None and pred_class != filter_class) or IoU[j] > filter_IoU:
+                    pop_idx_list.append(j)
             pop_idx_list = reversed(pop_idx_list)
             for idx in pop_idx_list:
-                IoU.pop(idx)
                 bboxes.pop(idx)
                 scores.pop(idx)
-            model_pred.append((IoU,bboxes,scores))
+            model_pred.append((np.ones((len(scores)))*i,bboxes,scores))
+        model_predictions.append(model_pred)
+
+    return model_predictions, scene_tokens
+
+def load_TP_predictions_from_files(paths, filter_class="None", filter_IoU=0):
+    model_predictions = []
+    for i,path in enumerate(paths):
+
+        with open(path, 'rb') as f:
+            pred = pickle.load(f)
+       
+        model_pred = []
+        scene_tokens = []
+        for scene in pred:
+            scene_tokens.append(scene['metadata']['token'])
+            IoU = scene['IoU_gt_record']
+            classes = list(scene['name'])
+            bboxes = list(scene['boxes_lidar'])
+            scores = list(scene['score'])
+            pop_idx_list = []
+            for j, pred_class in enumerate(classes):
+                if (filter_class is not None and pred_class != filter_class) or IoU[j] <= filter_IoU:
+                    pop_idx_list.append(j)
+            pop_idx_list = reversed(pop_idx_list)
+            for idx in pop_idx_list:
+                bboxes.pop(idx)
+                scores.pop(idx)
+            model_pred.append((np.ones((len(scores)))*i,bboxes,scores))
         model_predictions.append(model_pred)
 
     return model_predictions, scene_tokens
@@ -77,16 +104,20 @@ def plot_FP_gt_scene(preds, scene=0, draw_gt=True):
         if draw_gt else plot_pred_centerpoints_per_scene(scene_preds)
 
 
-def cluster_scene_FP(preds, scene=0, eps=2, print_result=False, visualize=False):
+def cluster_scene_FP(preds, scene=0, eps=2, min_samples=3, print_result=False, visualize=False):
     scene_preds = [e[scene][1] for e in preds] # 7 x npreds
+    scores = [e[scene][2] for e in preds]
+    model_src = [e[scene][0] for e in preds]
     pred_model = []
     flattened_preds = []
     for i in range(len(scene_preds)):
-        for pred in scene_preds[i]:
+        for j,pred in enumerate(scene_preds[i]):
+            pred = np.append(pred,scores[i][j]) # append score to pred
+            pred = np.append(pred,model_src[i][j]) # append model source to pred
             flattened_preds.append(pred) # get bev coord of bbox
             pred_model.append(i)
     flattened_preds = np.array(flattened_preds)
-    db = DBSCAN(eps, min_samples=5).fit(flattened_preds[:,0:2])
+    db = DBSCAN(eps, min_samples=min_samples).fit(flattened_preds[:,0:2])
     labels = db.labels_
     if print_result:
         n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
