@@ -104,7 +104,7 @@ def plot_FP_gt_scene(preds, scene=0, draw_gt=True):
         if draw_gt else plot_pred_centerpoints_per_scene(scene_preds)
 
 
-def cluster_scene_FP(preds, scene=0, eps=2, min_samples=3, print_result=False, visualize=False):
+def cluster_scene_FP(preds, scene=0, eps=2, min_samples=3, print_result=False, visualize=False, save_results=False):
     scene_preds = [e[scene][1] for e in preds] # 7 x npreds
     scores = [e[scene][2] for e in preds]
     model_src = [e[scene][0] for e in preds]
@@ -135,7 +135,7 @@ def cluster_scene_FP(preds, scene=0, eps=2, min_samples=3, print_result=False, v
         for cluster in points_in_cluster:
             plt.plot(np.array(cluster)[:,0],np.array(cluster)[:,1], "o", alpha=1)
         plt.show()
-    else:
+    if save_results:
         plt.savefig(f"results/cluster_scene{scene}.png")
     return points_in_cluster
 
