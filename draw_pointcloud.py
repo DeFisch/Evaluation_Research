@@ -134,11 +134,11 @@ def get_box_corners(bbox) -> np.ndarray:
 
 def visualize_cluster_TP_confidences(FP_clusters, TPs, show_results=True, scene = 0):
     """
-    FP_clusters: n_clusters x n_instances x 7
+    FP_clusters: n_clusters x n_instances x 8
     TPs: n_models x ([model_ids], [bboxes], [confidences])
     """
     
-    categories = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION"]
+    categories = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION","BEVFUSION"]
     model_confidences = {}
     for i in range(len(FP_clusters)):
         model_confidences[f"Cluster {i}"] = [0 for _ in categories]
@@ -146,7 +146,7 @@ def visualize_cluster_TP_confidences(FP_clusters, TPs, show_results=True, scene 
     
     for i,cluster in enumerate(FP_clusters):
         confidence_sum = []
-        for _ in range(7):
+        for _ in range(8):
             confidence_sum.append([])
         for instance in cluster:
             confidence_sum[int(instance[-1])].append(instance[-2])
@@ -182,13 +182,13 @@ def visualize_cluster_TP_confidences(FP_clusters, TPs, show_results=True, scene 
         plt.savefig(f"results/confidences_FP_TP_clusters/scene_{scene}.png")
 
 def draw_num_pts_confidence_correlation(pcd, FP_clusters, show_results=True, scene = 0):
-    categories = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION"]
+    categories = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION","BEVFUSION"]
 
     xyz = (pcd.T)[:, :3]
     xyz = o3d.utility.Vector3dVector(xyz)
     # compute max bound for each cluster
-    cluster_pts_num = [[] for _ in range(7)]
-    cluster_confidence = [[] for _ in range(7)]
+    cluster_pts_num = [[] for _ in range(8)]
+    cluster_confidence = [[] for _ in range(8)]
     for cluster in FP_clusters:
         max_x,min_x,max_y,min_y,max_z,min_z = -1000,1000,-1000,1000,-1000,1000
         for instance in cluster:
@@ -210,7 +210,7 @@ def draw_num_pts_confidence_correlation(pcd, FP_clusters, show_results=True, sce
     plt.close('all')
     fig, ax = plt.subplots(layout='constrained')
     fig.set_size_inches(10, 6)
-    for i in range(7):
+    for i in range(8):
         ax.scatter(cluster_pts_num[i], cluster_confidence[i], label=categories[i], alpha=0.5)
     ax.set_xlabel('Number of points in cluster')
     ax.set_ylabel('Confidence')
@@ -222,22 +222,23 @@ def draw_num_pts_confidence_correlation(pcd, FP_clusters, show_results=True, sce
     else:
         plt.savefig(f"results/num_pts_confidence_correlation/scene_{scene}.png")
 
-def draw_high_confidence_cluster(pcd, clusters, TPs):
+def draw_high_confidence_cluster(pcd, clusters, TPs, min_points=5):
     xyz = (pcd.T)[:, :3]
     xyz = o3d.utility.Vector3dVector(xyz)
     obj = []
     pc_points = []
+    np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
     for i,cluster in enumerate(clusters):
         cluster_confidence = []
-        for _ in range(7):
+        for _ in range(8):
             cluster_confidence.append([])
         for instance in cluster:
             cluster_confidence[int(instance[-1])].append(instance[-2])
-        cluster_confidence = [np.mean(np.array(e)) if len(e) > 0 else 0 for e in cluster_confidence]
-        TP_confidence = np.zeros(7)
+        cluster_confidence = np.array([np.mean(np.array(e)) if len(e) > 0 else 0 for e in cluster_confidence])
+        TP_confidence = np.zeros(8)
         for i,TP in enumerate(TPs):
             TP_confidence[i] = np.mean(TP[2])
-        if any([cluster_confidence[i] > TP_confidence[i] for i in range(7)]):
+        if any([cluster_confidence[i] > TP_confidence[i]*0.75 for i in range(8)]):
             max_x,min_x,max_y,min_y,max_z,min_z = -1000,1000,-1000,1000,-1000,1000
             for instance in cluster:
                 box_corners = get_box_corners(instance)
@@ -250,11 +251,14 @@ def draw_high_confidence_cluster(pcd, clusters, TPs):
             max_bound = [max_x, max_y, max_z]
             min_bound = [min_x, min_y, min_z]
             cluster_box = o3d.geometry.AxisAlignedBoundingBox(min_bound, max_bound)
+            pts_ids_inside_box = cluster_box.get_point_indices_within_bounding_box(xyz)
+            if len(pts_ids_inside_box) < min_points:
+                continue
             obj.append(cluster_box)
             obj[-1].color = [1,0,0]
             pc_points.append(o3d.geometry.PointCloud())
-            pc_points[-1].points = o3d.utility.Vector3dVector((pcd.T[:,:3])[cluster_box.get_point_indices_within_bounding_box(xyz)])
-            pc_points[-1].paint_uniform_color(np.random.rand(3))
+            pc_points[-1].points = o3d.utility.Vector3dVector((pcd.T[:,:3])[pts_ids_inside_box])
+            pc_points[-1].paint_uniform_color(np.array([1,0,0]))
             print(f"confidence: {cluster_confidence},\n TP confidence: {TP_confidence}")
     
     obj.extend(pc_points)
@@ -263,12 +267,28 @@ def draw_high_confidence_cluster(pcd, clusters, TPs):
     else:
         print("No high confidence clusters found.")
 
-    
+def FPs_per_model_per_scene(FPs, scene=0, save_results=True):
+    num_FPs = [len(e[scene][1]) for e in FPs]
+    models = ["PP_MULTIHEAD","SECOND_MULTIHEAD","PP_CENTERPT","CENTERPT_VOX01","CENTERPT_VOX0075","VOXELNEXT","TRANSFUSION","BEVFUSION"]
+    plt.close('all')
+    fig, ax = plt.subplots(layout='constrained')
+    fig.set_size_inches(10, 6)
+    ax.bar(models, num_FPs)
+    ax.set_xlabel('Model')
+    ax.set_ylabel('Number of FPs')
+    ax.set_title('Number of FPs per model per scene')
+    if save_results:
+        plt.savefig(f"results/FPs_per_model_per_scene/scene_{scene}.png")
 
 FPs, scene_tokens = load_predictions_from_files(PATH_LIST, filter_class="car", filter_IoU=0)
 scenes = np.arange(0,81)
 TPs = load_TP_predictions_from_files(PATH_LIST, filter_class="car", filter_IoU=0)
 for scene in scenes:
+
+    ######################## Plot per model FP number ########################
+    # FPs_per_model_per_scene(FPs, scene)
+
+    ######################## cluster points ########################
     clusters = cluster_scene_FP(FPs, scene, print_result=False, visualize=False, save_results=False)
     
     ######################## Draw pointcloud with active FP areas ########################

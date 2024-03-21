@@ -8,17 +8,27 @@ from sklearn.cluster import DBSCAN
 from collections import Counter
 
 # modify accoding to your results
-DATASET_GT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_dbinfos_10sweeps_withvelo.pkl"
-DATA_PKL="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_infos_10sweeps_val.pkl"
-TRANSFUSION_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/transfusion_lidar/default/eval/epoch_2119/val/default/result.pkl"
-VOXELNEXT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel0075_voxelnext/default/eval/epoch_1/val/default/result.pkl"
-CENTERPT_VOX01_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel01_res3d_centerpoint/default/eval/epoch_6454/val/default/result.pkl"
-CENTERPT_VOX0075_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel0075_res3d_centerpoint/default/eval/epoch_6648/val/default/result.pkl"
-SECOND_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_second_multihead/default/eval/epoch_6229/val/default/result.pkl"
-PP_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_pp_multihead/default/eval/epoch_5823/val/default/result.pkl"
-PP_CENTERPT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_dyn_pp_centerpoint/default/eval/epoch_6070/val/default/result.pkl"
+# DATASET_GT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_dbinfos_10sweeps_withvelo.pkl"
+# DATA_PKL="/Users/daniel/Documents/code/python/research/evaluation_research/data/nuscenes_infos_10sweeps_val.pkl"
+# TRANSFUSION_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/transfusion_lidar/default/eval/epoch_2119/val/default/result.pkl"
+# VOXELNEXT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel0075_voxelnext/default/eval/epoch_1/val/default/result.pkl"
+# CENTERPT_VOX01_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel01_res3d_centerpoint/default/eval/epoch_6454/val/default/result.pkl"
+# CENTERPT_VOX0075_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_voxel0075_res3d_centerpoint/default/eval/epoch_6648/val/default/result.pkl"
+# SECOND_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_second_multihead/default/eval/epoch_6229/val/default/result.pkl"
+# PP_MULTIHEAD_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbg s_pp_multihead/default/eval/epoch_5823/val/default/result.pkl"
+# PP_CENTERPT_PATH="/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/cbgs_dyn_pp_centerpoint/default/eval/epoch_6070/val/default/result.pkl"
+# BEVFUSION_PATH = "/Users/daniel/Documents/code/python/research/evaluation_research/results/nuscenes_models/bevfusion/default/eval/epoch_no_number/val/default/result.pkl"
 
-PATH_LIST=[PP_MULTIHEAD_PATH,SECOND_MULTIHEAD_PATH,PP_CENTERPT_PATH,CENTERPT_VOX01_PATH,CENTERPT_VOX0075_PATH,VOXELNEXT_PATH,TRANSFUSION_PATH]
+TRANSFUSION_PATH="results/trainval_pkl/transfusion_lidar.pkl"
+VOXELNEXT_PATH="results/trainval_pkl/cbgs_voxel0075_voxelnext.pkl"
+CENTERPT_VOX01_PATH="results/trainval_pkl/cbgs_voxel01_res3d_centerpoint.pkl"
+CENTERPT_VOX0075_PATH="results/trainval_pkl/cbgs_voxel0075_res3d_centerpoint.pkl"
+SECOND_MULTIHEAD_PATH="results/trainval_pkl/cbgs_second_multihead.pkl"
+PP_MULTIHEAD_PATH="results/trainval_pkl/cbgs_pp_multihead.pkl"
+PP_CENTERPT_PATH="results/trainval_pkl/cbgs_dyn_pp_centerpoint.pkl"
+BEVFUSION_PATH = "results/trainval_pkl/bevfusion.pkl"
+
+PATH_LIST=[PP_MULTIHEAD_PATH,SECOND_MULTIHEAD_PATH,PP_CENTERPT_PATH,CENTERPT_VOX01_PATH,CENTERPT_VOX0075_PATH,VOXELNEXT_PATH,TRANSFUSION_PATH, BEVFUSION_PATH]
 
 # load result pickle file one by one
 def load_predictions_from_files(paths, filter_class="None", filter_IoU=0):
